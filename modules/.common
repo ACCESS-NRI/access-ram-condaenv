@@ -1,0 +1,51 @@
+#%Module1.0
+
+# This is adapted from hh5's modulefiles for activating conda environments
+# using modules (see /g/data/hh5/public/modules/conda/.common.v2)
+
+module-whatis {Activate access-ram micromamba environment (https://github.com/ACCESS-NRI/access-ram-condaenv)}
+conflict access-ram
+
+# Name of this module's environment
+set envname [module-info name]
+
+# Get the environment variables from activate script
+set payuenv [exec /bin/env -i {{MODULE_LOCATION}}/env.sh $envname]
+
+# Convert the environment into module commands
+set lines [split $payuenv '\n']
+foreach line $lines {
+    regexp {^([^=]*)=(.*)} $line -> key value
+
+    # Exclude $PWD and $_
+    if {[lsearch -exact {MODULEPATH PWD _} $key] >= 0} {
+        continue
+    }
+
+    # Is this some sort of path?
+    if {[string match UDUNITS2_XML_PATH $key]} {
+        # This is actually a single path
+        setenv $key $value
+        continue
+    } elseif {[string match *?PATH $key]} {
+        # A *PATH variable to be prepended with a ':'
+        prepend-path $key $value
+        continue
+    } elseif {[lsearch {_LMFILES_ LOADEDMODULES} $key] >= 0} {
+        # Modulefile stuff that works like a path
+        prepend-path $key $value
+        continue
+    } elseif {[string match PATH $key]} {
+        # PATH itself (strip out the system paths to keep ordering correct)
+        prepend-path $key [regsub {:/usr/bin:/bin} $value {}]
+        continue
+    }
+
+    # Otherwise set an environment var
+    setenv $key $value
+}
+
+setenv LC_ALL en_AU.utf8
+
+# Disable including libraries from ~/.local
+setenv PYTHONNOUSERSITE x
