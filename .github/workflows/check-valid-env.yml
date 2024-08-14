@@ -1,4 +1,4 @@
-name: env.yml
+name: Check valid env.yml
 on:
   pull_request:
     paths:

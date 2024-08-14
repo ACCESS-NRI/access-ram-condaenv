@@ -3,17 +3,17 @@
 # This is adapted from hh5's modulefiles for activating conda environments
 # using modules (see /g/data/hh5/public/modules/conda/.common.v2)
 
-module-whatis {Activate access-ram micromamba environment (https://github.com/ACCESS-NRI/access-ram-condaenv)}
+module-whatis {Activate micromamba environment to run access-ram python scripts (https://github.com/ACCESS-NRI/access-ram-condaenv)}
 conflict access-ram
 
 # Name of this module's environment
 set envname [module-info name]
 
 # Get the environment variables from activate script
-set payuenv [exec /bin/env -i {{MODULE_LOCATION}}/env.sh $envname]
+set environment [exec /bin/env -i {{MODULE_LOCATION}}/env.sh $envname]
 
 # Convert the environment into module commands
-set lines [split $payuenv '\n']
+set lines [split $environment '\n']
 foreach line $lines {
     regexp {^([^=]*)=(.*)} $line -> key value
 
