@@ -21,7 +21,7 @@ jobs:
         id: get-deployment-environment
         run: echo "deployment-environments=$(jq --compact-output '.environments' ./config/deployment-environment.json)" >> $GITHUB_OUTPUT
 
-  # TODO: Get proper versioning
+  # TODO: Get proper versioning after testing
   version:
     name: Set release version
     runs-on: ubuntu-latest
@@ -100,7 +100,16 @@ jobs:
             ${{ secrets.HOST_DATA }}
             ${{ secrets.HOST }}
           private-key: ${{ secrets.SSH_KEY }}
-
+      
+      - name: Create deployment directory on ${{ matrix.deployment-environment }}
+        run: |
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
+          if [ $? -ne 0 ]; then
+            exit $?
+          fi
+          mkdir -p $(dirname ${{env.DEPLOYMENT_LOCATION}})
+          EOT
+      
       - name: Copy to ${{ matrix.deployment-environment }}
         run: |
           rsync -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
@@ -111,15 +120,14 @@ jobs:
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
           if [ $? -ne 0 ]; then
-          exit $?
+            exit $?
           fi
-          mkdir -p ${{ env.DEPLOYMENT_LOCATION }}
           tar -xzf ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz -C ${{ env.DEPLOYMENT_LOCATION }}
           source ${{ env.DEPLOYMENT_LOCATION }}/bin/activate
           conda-unpack
           source ${{ env.DEPLOYMENT_LOCATION }}/bin/deactivate
           rm -r ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz
-          # ln -s ${{ vars.MODULE_DIR }}/.common ${{ vars.MODULE_DIR }}/${{ env.VERSION }}
+          ln -s ${{ vars.MODULE_DIR }}/modules/conda/.common ${{ vars.MODULE_DIR }}/modules/conda/${{ env.NAME }}-${{ env.VERSION }}
           EOT
 
       - name: Create Release
