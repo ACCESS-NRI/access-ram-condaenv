@@ -21,6 +21,17 @@ jobs:
         id: get-deployment-environment
         run: echo "deployment-environments=$(jq --compact-output '.environments' ./config/deployment-environment.json)" >> $GITHUB_OUTPUT
 
+  # TODO: Get proper versioning
+  version:
+    name: Set release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Set version
+        id: version
+        run: echo "version=test1.0" >> $GITHUB_OUTPUT
+      
   pack:
     name: Pack access-ram-env
     runs-on: ubuntu-latest
@@ -29,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get Payu Version
+      - name: Get name
         id: access-ram
         run: echo "name=$(yq '.name' < env.yml)" >> $GITHUB_OUTPUT
 
@@ -59,6 +70,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs:
+      - version
       - pack
       - setup-deployment-env
     strategy:
@@ -68,6 +80,8 @@ jobs:
     environment: ${{ matrix.deployment-environment }}
     env:
       NAME: ${{ needs.pack.outputs.name }}
+      VERSION: ${{ needs.version.outputs.version }}
+      DEPLOYMENT_LOCATION: ${{ vars.DEPLOYMENT_DIR }}/conda/${{ needs.pack.outputs.name }}-${{ needs.version.outputs.version }}
     permissions:
       contents: write
     steps:
@@ -88,22 +102,20 @@ jobs:
         run: |
           rsync -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
             ${{ env.NAME }}.tar.gz \
-            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.DEPLOYMENT_LOCATION }}
+            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.PACK_TMP_LOCATION }}
 
       - name: Deploy to ${{ matrix.deployment-environment }}
-        env:
-          ENVIRONMENT_LOCATION: ${{ vars.DEPLOYMENT_LOCATION }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          mkdir -p ${{ env.ENVIRONMENT_LOCATION }}
+          mkdir -p ${{ env.DEPLOYMENT_LOCATION }}
           if [ $? -ne 0 ]; then
             exit $?
           fi
-          tar -xzf ${{ vars.DEPLOYMENT_LOCATION }}/${{ env.NAME }}.tar.gz -C ${{ env.ENVIRONMENT_LOCATION }}
+          tar -xzf ${{ vars.PACK_TMP_LOCATION }}/${{ env.NAME }}.tar.gz -C ${{ env.ENVIRONMENT_LOCATION }}
           source ${{ env.ENVIRONMENT_LOCATION }}/bin/activate
           conda-unpack
           source ${{ env.ENVIRONMENT_LOCATION }}/bin/deactivate
-          rm -r ${{ vars.DEPLOYMENT_LOCATION }}/${{ env.NAME }}.tar.gz
+          rm -r ${{ vars.PACK_TMP_LOCATION }}/${{ env.NAME }}.tar.gz
           # ln -s ${{ vars.MODULE_LOCATION }}/.common ${{ vars.MODULE_LOCATION }}/${{ env.VERSION }}
           EOT
 
