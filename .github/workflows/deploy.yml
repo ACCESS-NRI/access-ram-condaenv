@@ -6,7 +6,6 @@ on:
     paths:
       - 'env.yml'
   pull_request: #TODO: remove this line after testing
-  workflow_dispatch: #TODO: remove this line after testing
 
 jobs:
   setup-deployment-env:
@@ -46,8 +45,7 @@ jobs:
         shell: micromamba-shell {0}
         run: |
           conda pack
-          # conda-lock lock --file env.yml --platform linux-64 --micromamba --lockfile ${{ steps.access-ram.outputs.name }}.conda-lock.yml
-      # TODO: Solve issue with conda-lock (https://github.com/ACCESS-NRI/access-ram-condaenv/issues/3)
+          conda-lock lock --file env.yml --platform linux-64 --micromamba --lockfile ${{ steps.access-ram.outputs.name }}.conda-lock.yml
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -56,8 +54,7 @@ jobs:
           if-no-files-found: error
           path: |
             ${{ steps.access-ram.outputs.name }}.tar.gz
-            # ${{ steps.access-ram.outputs.name }}.conda-lock.yml
-      # TODO: Solve issue with conda-lock (https://github.com/ACCESS-NRI/access-ram-condaenv/issues/3)
+            ${{ steps.access-ram.outputs.name }}.conda-lock.yml
 
   deploy:
     runs-on: ubuntu-latest
@@ -106,6 +103,7 @@ jobs:
           source ${{ env.ENVIRONMENT_LOCATION }}/bin/activate
           conda-unpack
           source ${{ env.ENVIRONMENT_LOCATION }}/bin/deactivate
+          rm -r ${{ vars.DEPLOYMENT_LOCATION }}/${{ env.NAME }}.tar.gz
           # ln -s ${{ vars.MODULE_LOCATION }}/.common ${{ vars.MODULE_LOCATION }}/${{ env.VERSION }}
           EOT
 
@@ -119,5 +117,4 @@ jobs:
       #     fail_on_unmatched_files: true
       #     files: |
       #       ./${{ env.NAME }}.tar.gz
-      #       # ./${{ env.NAME }}.conda-lock.yml
-      # # TODO: Solve issue with conda-lock (https://github.com/ACCESS-NRI/access-ram-condaenv/issues/3)
+      #       ./${{ env.NAME }}.conda-lock.yml
