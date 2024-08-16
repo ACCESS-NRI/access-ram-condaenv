@@ -128,7 +128,7 @@ jobs:
           source ${{ env.DEPLOYMENT_LOCATION }}/bin/deactivate
           # TODO: Uncomment below line - just keeping environment for debugging
           # rm -r ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz
-          ln -s ${{ vars.MODULE_DIR }}/modules/conda/.common ${{ vars.MODULE_DIR }}/modules/conda/${{ env.NAME }}-${{ env.VERSION }}
+          ln -sf ${{ vars.MODULE_DIR }}/modules/conda/.common ${{ vars.MODULE_DIR }}/modules/conda/${{ env.NAME }}-${{ env.VERSION }}
           EOT
 
       - name: Create Release
