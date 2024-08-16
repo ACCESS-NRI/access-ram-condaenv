@@ -107,29 +107,27 @@ jobs:
       - name: Create deployment directory on ${{ matrix.deployment-environment }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
+          mkdir -p ${{env.DEPLOYMENT_LOCATION}}
           if [ $? -ne 0 ]; then
             exit $?
           fi
-          mkdir -p $(dirname ${{env.DEPLOYMENT_LOCATION}})
           EOT
 
       - name: Copy to ${{ matrix.deployment-environment }}
         run: |
-          rsync -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
+          rsync -v -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
             ${{ env.NAME }}-${{ env.VERSION }}.tar.gz \
             ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.ENVIRONMENT_DIR }}
 
       - name: Deploy to ${{ matrix.deployment-environment }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          if [ $? -ne 0 ]; then
-            exit $?
-          fi
           tar -xzf ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz -C ${{ env.DEPLOYMENT_LOCATION }}
           source ${{ env.DEPLOYMENT_LOCATION }}/bin/activate
           conda-unpack
           source ${{ env.DEPLOYMENT_LOCATION }}/bin/deactivate
-          rm -r ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz
+          # TODO: Uncomment below line - just keeping environment for debugging
+          # rm -r ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz
           ln -s ${{ vars.MODULE_DIR }}/modules/conda/.common ${{ vars.MODULE_DIR }}/modules/conda/${{ env.NAME }}-${{ env.VERSION }}
           EOT
 
