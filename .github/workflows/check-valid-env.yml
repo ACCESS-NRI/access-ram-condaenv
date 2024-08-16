@@ -4,8 +4,8 @@ on:
     paths:
       - 'env.yml'
 jobs:
-  check:
-    name: Check
+  check-env:
+    name: Check env.yml
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +17,30 @@ jobs:
           environment-file: env.yml
           environment-name: test-access-ram-environment
           generate-run-shell: false
+
+  # TODO: Remove this once we have a better versioning solution than a VERSION file
+  check-version:
+    name: Check VERSION
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36  # v3.0.2
+        id: filter
+        with:
+          filters: |
+            version:
+              - 'VERSION'
+
+      - name: Comment if VERSION not modified
+        if: steps.filter.outputs.version == 'false'
+        uses: access-nri/actions/.github/actions/pr-comment@main
+        with:
+          comment: |
+            :x: `VERSION` file must be updated before this PR is merged to deploy :x:
+
+      - name: Error if VERSION not modified
+        if: steps.filter.outputs.version == 'false'
+        run: |
+          echo "::error::Version must be modified in this PR"
+          exit 1
