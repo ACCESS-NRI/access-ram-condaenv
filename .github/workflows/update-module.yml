@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - 'modules/**'
-  pull_request: #TODO: remove this line after testing
 jobs:
   setup-deployment-env:
     name: Setup Deployment Environment
