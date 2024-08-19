@@ -87,7 +87,6 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
       PACKAGE_NAME: ${{ needs.pack.outputs.name }}-${{ needs.version.outputs.version }}
-      DEPLOYMENT_LOCATION: ${{ vars.ENVIRONMENT_DIR }}/conda/${{ needs.pack.outputs.name }}-${{ needs.version.outputs.version }}
     permissions:
       contents: write
     steps:
@@ -104,15 +103,6 @@ jobs:
             ${{ secrets.HOST }}
           private-key: ${{ secrets.SSH_KEY }}
 
-      - name: Create deployment directory on ${{ matrix.deployment-environment }}
-        run: |
-          ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          mkdir -p ${{ env.DEPLOYMENT_LOCATION }}
-          if [ $? -ne 0 ]; then
-            exit $?
-          fi
-          EOT
-
       - name: Copy to ${{ matrix.deployment-environment }}
         run: |
           rsync -v -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
@@ -120,14 +110,16 @@ jobs:
             ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.PACK_DIR }}
 
       - name: Deploy to ${{ matrix.deployment-environment }}
+        env:
+          DEPLOYMENT_DIR: ${{ vars.ENVIRONMENT_DIR }}/${{ env.VERSION }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          tar -xzf ${{ vars.PACK_DIR }}/${{ env.PACKAGE_NAME }}.tar.gz -C ${{ env.DEPLOYMENT_LOCATION }}
-          source ${{ env.DEPLOYMENT_LOCATION }}/bin/activate
+          mkdir -p ${{ env.DEPLOYMENT_DIR }}
+          tar -xzf ${{ vars.PACK_DIR }}/${{ env.PACKAGE_NAME }}.tar.gz -C ${{ env.DEPLOYMENT_DIR }}
+          source ${{ env.DEPLOYMENT_DIR }}/bin/activate
           conda-unpack
-          source ${{ env.DEPLOYMENT_LOCATION }}/bin/deactivate
-          rm -r ${{ vars.ENVIRONMENT_DIR }}/${{ env.PACKAGE_NAME }}.tar.gz
-          ln -sf ${{ vars.MODULE_DIR }}/modules/conda/.common ${{ vars.MODULE_DIR }}/modules/conda/${{ env.PACKAGE_NAME }}
+          source ${{ env.DEPLOYMENT_DIR }}/bin/deactivate
+          ln -sf ${{ vars.MODULE_DIR }}/.common ${{ vars.MODULE_DIR }}/${{ env.VERSION }}
           EOT
 
       - name: Create Release
