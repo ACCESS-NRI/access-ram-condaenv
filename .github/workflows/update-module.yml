@@ -45,13 +45,6 @@ jobs:
           sed 's|{{APPS_DIR}}|'"${{ vars.APPS_DIR }}"'|g' modules/env.sh > release/modules/env.sh
           chmod +x release/modules/env.sh
 
-    #   - name: Generate pre-release modulesfiles
-    #     run: |
-    #       mkdir -p prerelease/modules
-    #       sed 's|{{MODULE_LOCATION}}|'"${{ vars.PRERELEASE_MODULE_LOCATION }}"'|g' modules/.common > prerelease/modules/.common
-    #       sed 's|{{ENVIRONMENT_LOCATION}}|'"${{ vars.PRERELEASE_ENVIRONMENT_LOCATION }}"'|g' modules/env.sh > prerelease/modules/env.sh
-    #       chmod +x prerelease/modules/env.sh
-
       - name: Create deployment directory on ${{ matrix.deployment-environment }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST_DATA }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
@@ -64,8 +57,3 @@ jobs:
           rsync -rvp -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
             release/modules/ \
             ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.MODULE_DIR }}
-
-        #   # Rsync development modulefiles
-        #   rsync -rvp -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
-        #     prerelease/modules/ \
-        #     ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.PRERELEASE_MODULE_LOCATION }}
