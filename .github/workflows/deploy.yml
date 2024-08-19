@@ -63,13 +63,15 @@ jobs:
           conda-lock lock --file env.yml --platform linux-64 --micromamba --lockfile ${{ steps.access-ram.outputs.name }}-${{env.VERSION}}.conda-lock.yml
 
       - name: Upload Artifact
+        env:
+          PACKAGE_NAME: ${{ steps.access-ram.outputs.name }}-${{ env.VERSION }}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.access-ram.outputs.name }}
+          name: ${{ env.PACKAGE_NAME }}
           if-no-files-found: error
           path: |
-            ${{ steps.access-ram.outputs.name }}-${{ env.VERSION }}.tar.gz
-            ${{ steps.access-ram.outputs.name }}-${{ env.VERSION }}.conda-lock.yml
+            ${{ env.PACKAGE_NAME }}.tar.gz
+            ${{ env.PACKAGE_NAME }}.conda-lock.yml
 
   deploy:
     runs-on: ubuntu-latest
@@ -83,15 +85,15 @@ jobs:
         deployment-environment: ${{ fromJson(needs.setup-deployment-env.outputs.deployment-environments) }}
     environment: ${{ matrix.deployment-environment }}
     env:
-      NAME: ${{ needs.pack.outputs.name }}
       VERSION: ${{ needs.version.outputs.version }}
+      PACKAGE_NAME: ${{ needs.pack.outputs.name }}-${{ needs.version.outputs.version }}
       DEPLOYMENT_LOCATION: ${{ vars.ENVIRONMENT_DIR }}/conda/${{ needs.pack.outputs.name }}-${{ needs.version.outputs.version }}
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ${{ env.NAME }}
+          name: ${{ env.PACKAGE_NAME }}
 
       - name: Set up SSH
         uses: access-nri/actions/.github/actions/setup-ssh@main
@@ -105,7 +107,7 @@ jobs:
       - name: Create deployment directory on ${{ matrix.deployment-environment }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          mkdir -p ${{env.DEPLOYMENT_LOCATION}}
+          mkdir -p ${{ env.DEPLOYMENT_LOCATION }}
           if [ $? -ne 0 ]; then
             exit $?
           fi
@@ -114,18 +116,18 @@ jobs:
       - name: Copy to ${{ matrix.deployment-environment }}
         run: |
           rsync -v -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
-            ${{ env.NAME }}-${{ env.VERSION }}.tar.gz \
-            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.ENVIRONMENT_DIR }}
+            ${{ env.PACKAGE_NAME }}.tar.gz \
+            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.PACK_DIR }}
 
       - name: Deploy to ${{ matrix.deployment-environment }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          tar -xzf ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz -C ${{ env.DEPLOYMENT_LOCATION }}
+          tar -xzf ${{ vars.PACK_DIR }}/${{ env.PACKAGE_NAME }}.tar.gz -C ${{ env.DEPLOYMENT_LOCATION }}
           source ${{ env.DEPLOYMENT_LOCATION }}/bin/activate
           conda-unpack
           source ${{ env.DEPLOYMENT_LOCATION }}/bin/deactivate
-          rm -r ${{ vars.ENVIRONMENT_DIR }}/${{ env.NAME }}-${{ env.VERSION }}.tar.gz
-          ln -sf ${{ vars.MODULE_DIR }}/modules/conda/.common ${{ vars.MODULE_DIR }}/modules/conda/${{ env.NAME }}-${{ env.VERSION }}
+          rm -r ${{ vars.ENVIRONMENT_DIR }}/${{ env.PACKAGE_NAME }}.tar.gz
+          ln -sf ${{ vars.MODULE_DIR }}/modules/conda/.common ${{ vars.MODULE_DIR }}/modules/conda/${{ env.PACKAGE_NAME }}
           EOT
 
       - name: Create Release
@@ -136,5 +138,5 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            ./${{ env.NAME }}-${{ env.VERSION }}.tar.gz
-            ./${{ env.NAME }}-${{ env.VERSION }}.conda-lock.yml
+            ./${{ env.PACKAGE_NAME }}.tar.gz
+            ./${{ env.PACKAGE_NAME }}.conda-lock.yml
