@@ -28,8 +28,6 @@ jobs:
       matrix:
         deployment-environment: ${{ fromJson(needs.setup-deployment-env.outputs.deployment-environments) }}
     environment: ${{ matrix.deployment-environment }}
-    env:
-      MODULE_DIR: ${{vars.MODULE_DIR}}/modules/conda
     steps:
       - uses: actions/checkout@v4
 
@@ -43,8 +41,8 @@ jobs:
       - name: Generate release modulesfiles
         run: |
           mkdir -p release/modules
-          sed 's|{{MODULE_DIR}}|'"${{ env.MODULE_DIR }}"'|g' modules/.common > release/modules/.common
-          sed 's|{{ENVIRONMENT_DIR}}|'"${{ vars.ENVIRONMENT_DIR }}"'|g' modules/env.sh > release/modules/env.sh
+          sed 's|{{MODULE_DIR}}|'"${{ vars.MODULE_DIR }}"'|g' modules/.common > release/modules/.common
+          sed 's|{{APPS_DIR}}|'"${{ vars.APPS_DIR }}"'|g' modules/env.sh > release/modules/env.sh
           chmod +x release/modules/env.sh
 
     #   - name: Generate pre-release modulesfiles
@@ -57,18 +55,15 @@ jobs:
       - name: Create deployment directory on ${{ matrix.deployment-environment }}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST_DATA }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          if [ $? -ne 0 ]; then
-            exit $?
-          fi
-          mkdir -p ${{env.MODULE_DIR}}
+          mkdir -p ${{ vars.MODULE_DIR }}
           EOT
 
       - name: Copy modulefiles to Gadi
         run: |
           # Rsync release modulefiles
           rsync -rvp -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
-            release/modules/* \
-            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{env.MODULE_DIR}}
+            release/modules/ \
+            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.MODULE_DIR }}
 
         #   # Rsync development modulefiles
         #   rsync -rvp -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
