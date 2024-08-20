@@ -30,8 +30,8 @@ On all of the deployment targets, the deployed environment can be activated usin
 2. Once you are a member, run the following:
 
    ```bash
-   module use /g/data/<PROJECT_TO_BE_DEFINED>/modules
-   module load access-ram3
+   module use /g/data/vk83/modules
+   module load conda/access-ram3/<VERSION>
    ```
 
 You are set to run ACCESS-RAM3.
@@ -44,7 +44,7 @@ New deployment environments must be created as a GitHub Environment and also hav
 
 ### Deploying locally
 
-To deploy locally, you can use the assets created during the release. [Releases are found here](https://github.com/ACCESS-NRI/access-ram-condaenv/releases). Specifically:
+To deploy locally, you can use the assets created in the release. [Releases are found here](https://github.com/ACCESS-NRI/access-ram-condaenv/releases). Specifically:
 
-- To use the compressed environment (which doesn't require conda or python) you can run `tar -xzf access-ram.tar.gz access-ram` and then `./access-ram/bin/activate` to activate the environment.
+- To use the compressed environment (which doesn't require conda or python) you can run `tar -xzf access-ram-<VERSION>.tar.gz access-ram` and then `./access-ram/bin/activate` to activate the environment.
 - To use the lockfile, you can run `micromamba create -n environment-name -f access-ram.conda-lock.yml` with an appropriate install of `micromamba`.
