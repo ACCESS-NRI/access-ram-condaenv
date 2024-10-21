@@ -1,17 +1,15 @@
 name: access-ram-dev
 channels:
   - accessnri
-  - coecms
   - conda-forge
+  - nodefaults
 dependencies:
+  - python=3.11
+  - conda-index
+  - conda-lock
+  - conda-pack
   - hypothesis
   - ipykernel
-  - mule
-  - numpy=1.23.4 # https://stackoverflow.com/a/75148219/21024780
-  - python=3.10
   - pytest
   - pytest-cov
   - pre_commit
-  - scitools-iris
-  - xarray
-  - cdo
