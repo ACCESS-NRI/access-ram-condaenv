@@ -1,0 +1,181 @@
+name: Deploy development environment
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'config/**'
+      - 'modules/**'
+      - 'env-dev.yml'
+  repository_dispatch:
+    types: [prerelease]
+env:
+  ENV_NAME: env-dev.yml
+  VERSION: dev
+concurrency:
+  # Since there is only one development conda environmnent deployed at a time, 
+  # we can cancel the previous deployment if a new one is triggered.
+  group: deploy-development
+  cancel-in-progress: true
+
+jobs:
+  check-dispatch-token:
+    name: Check dispatch token
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'repository_dispatch' }}
+    steps:
+      - name: Check token
+        run: |
+          if [[ ${{ github.event.client_payload.token}} != ${{secrets.REPO_ACCESS_TOKEN }} ]]; then
+            echo "Invalid token"
+            exit 1
+          fi
+
+  get-deployment-sites:
+    name: Get Deployment Sites
+    runs-on: ubuntu-latest
+    needs: check-dispatch-token
+    # Don't run if the event is triggered by a repository dispatch with a non-valid token, 
+    # but trigget if the event is not a repository dispatch
+    if: ${{ !cancelled() && !(github.event_name == 'repository_dispatch' && needs.check-dispatch-token.result != 'success') }}
+    outputs:
+      deployment-sites: ${{ steps.get-deployment-sites.outputs.deployment-sites }}
+    steps:
+      - name: Checkout config
+        uses: actions/checkout@v4
+
+      - name: Get sites
+        id: get-deployment-sites
+        run: echo "deployment-sites=$(jq --compact-output '.sites' ./config/deployment-sites.json)" >> $GITHUB_OUTPUT
+    
+  pack:
+    name: Pack environment
+    runs-on: ubuntu-latest
+    needs: check-dispatch-token
+    # Don't run if the event is triggered by a repository dispatch with a non-valid token, 
+    # but trigget if the event is not a repository dispatch
+    if: ${{ !cancelled() && !(github.event_name == 'repository_dispatch' && needs.check-dispatch-token.result != 'success') }}
+    outputs:
+      full-name: ${{ steps.get-name.outputs.full-name }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get environment name
+        id: get-name
+        run: echo "full-name=$(yq '.name' < ${{env.ENV_NAME}})-${{env.VERSION}}" >> $GITHUB_OUTPUT
+
+      # Search for the latest open PR (not a draft) in the replace_landsurface and era5_grib_parallel repos with
+      # changes in specific files. If a PR is found, download the artifact from the PR latest 
+      # (successful) workflow run. If a PR is not found, download the lates released version.
+      - name: Get latest dependencies
+        run: |
+          download_latest_release() {
+            gh release download $(gh release view --repo ${{ github.repository_owner }}/$1 --json tagName --jq '.tagName') \
+            --repo ${{ github.repository_owner }}/$1 --pattern *.tar.bz2 -D ${1}_build
+          }
+
+          for dependency in replace_landsurface era5_grib_parallel; do
+            echo "Getting latest \"$dependency\" dependency..."
+            # Get sha of latest open PR that changes either of the following files:
+            # [src/**, setup.py, pyproject.toml, .conda/**]
+            
+            pr_sha=$(gh pr list --repo ${{ github.repository_owner }}/$dependency --state open --no-draft \
+            --json headRefOid,files --jq '.[] | select(.files[].path | 
+            (startswith("src/") or (. == "setup.py") or (. == "pyproject.toml") or (startswith(".conda/"))))
+            | .headRefOid' | head -n 1)
+            
+            # if a PR is found, find the ID of the latest successful workflow run
+            
+            if [[ -n $pr_sha ]]; then
+              echo "$dependency: Found open PR with changes in the required files. Ref: $pr_sha"
+              runID=$(gh run list --repo ${{ github.repository_owner }}/$dependency --json databaseId,headSha,event,status \
+              --jq ".[] | select(.event == \"pull_request\" and .status == \"completed\" and .headSha == \"$pr_sha\") 
+              | .databaseId" | head -n 1)
+              if [[ -n $runID ]]; then
+                echo "$dependency: Found successful workflow run for the PR. Run ID: $runID"
+                (gh run download $runID --repo ${{ github.repository_owner }}/$dependency -D ${dependency}_build &> /dev/null \
+                && echo "$dependency: Conda package artifact downloaded successfully.") || \
+                (echo "$dependency: No valid artifact found. Dependency will be installed from the latest release.";\
+                download_latest_release $dependency)
+              else
+                echo "$dependency: No successful workflow run found. Dependency will be installed from the latest release."
+                download_latest_release $dependency
+              fi
+            else
+              echo "$dependency: No useful open PR found. Dependency will be installed from the latest release."
+              download_latest_release $dependency
+            fi
+          done
+
+      - name: Setup Micromamba
+        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 #v1.9.0
+        with:
+          micromamba-version: '1.5.8-0'
+          environment-file: ${{env.ENV_NAME}}
+          environment-name: ${{ steps.get-name.outputs.full-name }}
+          generate-run-shell: true
+        
+      - name: Install dependencies
+        shell: micromamba-shell {0}
+        run: |
+          mamba install replace-landsurface era5grib-parallel -c file://era5_grib_parallel_build \
+          -c file://replace_landsurface_build -y
+      
+      - name: Create Pack
+        shell: micromamba-shell {0}
+        run: |
+          conda pack -o ${{ steps.get-name.outputs.full-name }}.tar.gz
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.get-name.outputs.full-name }}
+          if-no-files-found: error
+          path: ${{ steps.get-name.outputs.full-name }}.tar.gz
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs:
+      - get-deployment-sites
+      - pack
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment-sites: ${{ fromJson(needs.get-deployment-sites.outputs.deployment-sites) }}
+    environment: ${{ matrix.deployment-sites }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.pack.outputs.full-name }}
+
+      - name: Set up SSH
+        uses: access-nri/actions/.github/actions/setup-ssh@main
+        id: ssh
+        with:
+          hosts: |
+            ${{ secrets.HOST_DATA }}
+            ${{ secrets.HOST }}
+          private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Copy to ${{ matrix.deployment-sites }}
+        run: |
+          rsync -v -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
+            ${{ needs.pack.outputs.full-name }}.tar.gz \
+            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.PACK_DIR }}
+
+      - name: Deploy to ${{ matrix.deployment-sites }}
+        env:
+          DEPLOYMENT_DIR: ${{ vars.ENVIRONMENT_DIR }}/${{ env.VERSION }}
+        run: |
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
+          mkdir -p ${{ env.DEPLOYMENT_DIR }}
+          tar -xzf ${{ vars.PACK_DIR }}/${{ needs.pack.outputs.full-name }}.tar.gz -C ${{ env.DEPLOYMENT_DIR }}
+          source ${{ env.DEPLOYMENT_DIR }}/bin/activate
+          conda-unpack
+          source ${{ env.DEPLOYMENT_DIR }}/bin/deactivate
+          ln -sf ${{ vars.MODULE_DIR }}/.common ${{ vars.MODULE_DIR }}/${{ env.VERSION }}
+          EOT
