@@ -185,15 +185,16 @@ jobs:
 
       - name: Deploy to ${{ matrix.deployment-sites }}
         env:
-          DEPLOYMENT_DIR: ${{ vars.ENVIRONMENT_DIR }}/${{ env.VERSION }}
+          MODULE_DEPLOYMENT_DIR: ${{ vars.ROOT_DIR }}/${{vars.MODULES_DIR}}/${{vars.MODULE_NAME}}/${{env.VERSION}}
+          APP_DEPLOYMENT_DIR: ${{ vars.ROOT_DIR }}/${{vars.APPS_DIR}}/${{vars.MODULE_NAME}}/${{env.VERSION}}
         run: |
           ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          mkdir -p ${{ env.DEPLOYMENT_DIR }}
-          tar -xzf ${{ vars.PACK_DIR }}/${{ needs.pack.outputs.full-name }}.tar.gz -C ${{ env.DEPLOYMENT_DIR }}
-          source ${{ env.DEPLOYMENT_DIR }}/bin/activate
+          mkdir -p ${{ env.APP_DEPLOYMENT_DIR }}
+          tar -xzf ${{ vars.PACK_DIR }}/${{ needs.pack.outputs.full-name }}.tar.gz -C ${{ env.APP_DEPLOYMENT_DIR }}
+          source ${{ env.APP_DEPLOYMENT_DIR }}/bin/activate
           conda-unpack
-          source ${{ env.DEPLOYMENT_DIR }}/bin/deactivate
-          ln -sf ${{ vars.MODULE_DIR }}/.common ${{ vars.MODULE_DIR }}/${{ env.VERSION }}
+          source ${{ env.APP_DEPLOYMENT_DIR }}/bin/deactivate
+          ln -sf $(dirname ${{env.APP_DEPLOYMENT_DIR}})/.common ${{env.MODULE_DEPLOYMENT_DIR}}
           EOT
 
       - name: Create Release
