@@ -45,15 +45,15 @@ jobs:
       - name: Set deployment directories
         run: |
             echo "MODULE_DEPLOYMENT_DIR=${{ vars.ROOT_DIR }}/${{vars.MODULES_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
-            echo "APP_DEPLOYMENT_DIR=${{ vars.ROOT_DIR }}/${{vars.APPS_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
+            echo "FULL_APP_DIR=${{ vars.ROOT_DIR }}/${{vars.APPS_DIR}}" >> $GITHUB_ENV
             echo "MODULE_DEPLOYMENT_DIR_PRERELEASE=${{ vars.ROOT_DIR_PRERELEASE }}/${{vars.MODULES_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
-            echo "APP_DEPLOYMENT_DIR_PRERELEASE=${{ vars.ROOT_DIR_PRERELEASE }}/${{vars.APPS_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
+            echo "FULL_APP_DIR_PRERELEASE=${{ vars.ROOT_DIR_PRERELEASE }}/${{vars.APPS_DIR}}" >> $GITHUB_ENV
       
       - name: Generate release modulesfiles
         run: |
           mkdir -p ${{ env.OUTPUT_DIR }}
           sed "s|{{MODULE_DIR}}|$MODULE_DEPLOYMENT_DIR|g" ${{env.INPUT_DIR}}/.common > ${{env.OUTPUT_DIR}}/.common
-          sed 's|{{APPS_DIR}}|$APP_DEPLOYMENT_DIR|g' ${{env.INPUT_DIR}}/env.sh > ${{env.OUTPUT_DIR}}/env.sh
+          sed "s|{{APPS_DIR}}|$FULL_APP_DIR|g" ${{env.INPUT_DIR}}/env.sh > ${{env.OUTPUT_DIR}}/env.sh
           chmod +x ${{ env.OUTPUT_DIR }}/env.sh
 
       - name: Copy release modulefiles to Gadi
@@ -75,7 +75,7 @@ jobs:
         run: |
           mkdir -p ${{ env.OUTPUT_DIR_PRERELEASE }}
           sed "s|{{MODULE_DIR}}|$MODULE_DEPLOYMENT_DIR_PRERELEASE|g" ${{env.INPUT_DIR}}/.common > ${{env.OUTPUT_DIR_PRERELEASE}}/.common
-          sed 's|{{APPS_DIR}}|$APP_DEPLOYMENT_DIR_PRERELEASE|g' ${{env.INPUT_DIR}}/env.sh > ${{env.OUTPUT_DIR_PRERELEASE}}/env.sh
+          sed "s|{{APPS_DIR}}|$FULL_APP_DIR_PRERELEASE|g" ${{env.INPUT_DIR}}/env.sh > ${{env.OUTPUT_DIR_PRERELEASE}}/env.sh
           chmod +x ${{ env.OUTPUT_DIR_PRERELEASE }}/env.sh
 
       - name: Copy prerelease modulefiles to Gadi
