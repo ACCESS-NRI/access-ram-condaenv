@@ -7,27 +7,31 @@ on:
     paths:
       - 'modules/**'
 jobs:
-  setup-deployment-env:
-    name: Setup Deployment Environment
+  get-deployment-sites:
+    name: Get Deployment Sites
     runs-on: ubuntu-latest
     outputs:
-      deployment-environments: ${{ steps.get-deployment-environment.outputs.deployment-environments }}
+      deployment-sites: ${{ steps.get-deployment-sites.outputs.deployment-sites }}
     steps:
       - name: Checkout config
         uses: actions/checkout@v4
 
-      - name: Get environments
-        id: get-deployment-environment
-        run: echo "deployment-environments=$(jq --compact-output '.environments' ./config/deployment-environment.json)" >> $GITHUB_OUTPUT
+      - name: Get sites
+        id: get-deployment-sites
+        run: echo "deployment-sites=$(jq --compact-output '.sites' ./config/deployment-sites.json)" >> $GITHUB_OUTPUT
 
   deploy:
     runs-on: ubuntu-latest
-    needs: setup-deployment-env
+    needs: get-deployment-sites
     strategy:
       fail-fast: false
       matrix:
-        deployment-environment: ${{ fromJson(needs.setup-deployment-env.outputs.deployment-environments) }}
-    environment: ${{ matrix.deployment-environment }}
+        deployment-sites: ${{ fromJson(needs.get-deployment-sites.outputs.deployment-sites) }}
+    environment: ${{ matrix.deployment-sites }}
+    env:
+      INPUT_DIR: modules
+      OUTPUT_DIR: release/modules
+      OUTPUT_DIR_PRERELEASE: prerelease/modules
     steps:
       - uses: actions/checkout@v4
 
@@ -37,23 +41,54 @@ jobs:
           hosts: |
             ${{ secrets.HOST_DATA }}
           private-key: ${{ secrets.SSH_KEY }}
-
+      
+      - name: Set deployment directories
+        run: |
+            echo "MODULE_DEPLOYMENT_DIR=${{ vars.ROOT_DIR }}/${{vars.MODULES_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
+            echo "APP_DEPLOYMENT_DIR=${{ vars.ROOT_DIR }}/${{vars.APPS_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
+            echo "MODULE_DEPLOYMENT_DIR_PRERELEASE=${{ vars.ROOT_DIR_PRERELEASE }}/${{vars.MODULES_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
+            echo "APP_DEPLOYMENT_DIR_PRERELEASE=${{ vars.ROOT_DIR_PRERELEASE }}/${{vars.APPS_DIR}}/${{vars.MODULE_NAME}}" >> $GITHUB_ENV
+      
       - name: Generate release modulesfiles
         run: |
-          mkdir -p release/modules
-          sed 's|{{MODULE_DIR}}|'"${{ vars.MODULE_DIR }}"'|g' modules/.common > release/modules/.common
-          sed 's|{{APPS_DIR}}|'"${{ vars.APPS_DIR }}"'|g' modules/env.sh > release/modules/env.sh
-          chmod +x release/modules/env.sh
+          mkdir -p ${{ env.OUTPUT_DIR }}
+          sed "s|{{MODULE_DIR}}|$MODULE_DEPLOYMENT_DIR|g" ${{env.INPUT_DIR}}/.common > ${{env.OUTPUT_DIR}}/.common
+          sed 's|{{APPS_DIR}}|$APP_DEPLOYMENT_DIR|g' ${{env.INPUT_DIR}}/env.sh > ${{env.OUTPUT_DIR}}/env.sh
+          chmod +x ${{ env.OUTPUT_DIR }}/env.sh
 
-      - name: Create deployment directory on ${{ matrix.deployment-environment }}
+      - name: Copy release modulefiles to Gadi
         run: |
-          ssh ${{ secrets.USER }}@${{ secrets.HOST_DATA }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
-          mkdir -p ${{ vars.MODULE_DIR }}
+          # Create module deployment directory
+          ssh ${{ secrets.USER }}@${{ secrets.HOST_DATA }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<EOT
+          mkdir -p "$MODULE_DEPLOYMENT_DIR"
           EOT
-
-      - name: Copy modulefiles to Gadi
-        run: |
+          if [ $? -ne 0 ]; then
+            echo "Failed to create module deployment release directory"
+            exit 1
+          fi
           # Rsync release modulefiles
           rsync -rvp -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
-            release/modules/ \
-            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.MODULE_DIR }}
+            ${{ env.OUTPUT_DIR }}/ \
+            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${MODULE_DEPLOYMENT_DIR}
+      
+      - name: Generate prerelease modulesfiles
+        run: |
+          mkdir -p ${{ env.OUTPUT_DIR_PRERELEASE }}
+          sed "s|{{MODULE_DIR}}|$MODULE_DEPLOYMENT_DIR_PRERELEASE|g" ${{env.INPUT_DIR}}/.common > ${{env.OUTPUT_DIR_PRERELEASE}}/.common
+          sed 's|{{APPS_DIR}}|$APP_DEPLOYMENT_DIR_PRERELEASE|g' ${{env.INPUT_DIR}}/env.sh > ${{env.OUTPUT_DIR_PRERELEASE}}/env.sh
+          chmod +x ${{ env.OUTPUT_DIR_PRERELEASE }}/env.sh
+
+      - name: Copy prerelease modulefiles to Gadi
+        run: |
+          # Create module deployment directory
+          ssh ${{ secrets.USER }}@${{ secrets.HOST_DATA }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<EOT
+          mkdir -p "$MODULE_DEPLOYMENT_DIR_PRERELEASE"
+          EOT
+          if [ $? -ne 0 ]; then
+            echo "Failed to create module deployment prerelease directory"
+            exit 1
+          fi
+          # Rsync prerelease modulefiles
+          rsync -rvp -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
+            ${{ env.OUTPUT_DIR_PRERELEASE }}/ \
+            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${MODULE_DEPLOYMENT_DIR_PRERELEASE}

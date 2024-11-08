@@ -1,0 +1,6 @@
+{
+    "$schema": "./deployment-sites.schema.json",
+    "sites": [
+        "Gadi"
+    ]
+}

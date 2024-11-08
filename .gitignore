@@ -1,0 +1,8 @@
+test_data/
+.coverage
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.vscode/

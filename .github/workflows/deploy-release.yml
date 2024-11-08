@@ -1,0 +1,209 @@
+name: Deploy release environment
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'config/**'
+      - 'modules/**'
+      - 'env.yml'
+  repository_dispatch:
+    types: [release]
+  
+env:
+  ENV_NAME: env.yml
+  TZ: Australia/Canberra
+
+jobs:
+  check-dispatch-token:
+    name: Check dispatch token
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'repository_dispatch' }}
+    steps:
+      - name: Check token
+        run: |
+          if [[ ${{ github.event.client_payload.token}} != ${{secrets.ADMIN_TOKEN }} ]]; then
+            echo "Invalid token"
+            exit 1
+          fi
+
+  update-dependencies:
+    name: Update dependencies
+    runs-on: ubuntu-latest
+    needs: check-dispatch-token
+    permissions:
+      contents: write
+    if: ${{ github.event_name == 'repository_dispatch' }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.ADMIN_TOKEN }}
+
+      - name: Bump dependencies
+        run: |
+          # Substitute the portion after "- <dependency>" with "=<version>" in the environment file (to produce "- <dependency>=<version>")
+          sed -i "s|^\(\s*- ${{github.event.client_payload.dependency}}\).*|\1=${{github.event.client_payload.version}}|" ${{ env.ENV_NAME }}
+        
+      - name: Import GPG settings
+        uses: crazy-max/ghaction-import-gpg@01dd5d3ca463c7f10f7f4f7b4f177225ac661ee4  # v6.1.0
+        with:
+          gpg_private_key: ${{ secrets.GH_ACTIONS_BOT_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GH_ACTIONS_BOT_GPG_PASSPHRASE }}
+          git_config_global: true
+          git_committer_name: ${{ vars.GH_ACTIONS_BOT_GIT_USER_NAME }}
+          git_committer_email: ${{ vars.GH_ACTIONS_BOT_GIT_USER_EMAIL }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+          git_tag_gpgsign: true
+
+      - name: Commit and push changes
+        run: |
+          git commit -am "[skip ci] Bump '${{github.event.client_payload.dependency}}' dependency to version '${{github.event.client_payload.version}}' in the ${{github.event.action}} environment."
+          git push origin main
+
+  get-deployment-sites:
+    name: Get Deployment Sites
+    runs-on: ubuntu-latest
+    needs: check-dispatch-token
+    # Don't run if the event is triggered by a repository dispatch with a non-valid token, 
+    # but trigget if the event is not a repository dispatch
+    if: ${{ !cancelled() && !(github.event_name == 'repository_dispatch' && needs.check-dispatch-token.result != 'success') }}
+    outputs:
+      deployment-sites: ${{ steps.get-deployment-sites.outputs.deployment-sites }}
+    steps:
+      - name: Checkout config
+        uses: actions/checkout@v4
+
+      - name: Get sites
+        id: get-deployment-sites
+        run: echo "deployment-sites=$(jq --compact-output '.sites' ./config/deployment-sites.json)" >> $GITHUB_OUTPUT
+
+  set-version:
+    name: Set condaenv release version
+    runs-on: ubuntu-latest
+    needs: check-dispatch-token
+    # Don't run if the event is triggered by a repository dispatch with a non-valid token, 
+    # but trigget if the event is not a repository dispatch
+    if: ${{ !cancelled() && !(github.event_name == 'repository_dispatch' && needs.check-dispatch-token.result != 'success') }}
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version tag
+        id: set-version
+        # Set version to the current date in the CalVer format (YYYY.MM.VERSION), 
+        # where VERSION is an incremental 0-based version number (for versions released on the same month).
+        # If a release tag with the current version is already present (earlier release 
+        # happened on the same month), increment the VERSION by 1 until a unique release tag is found
+        shell: bash -el {0}
+        run: |
+          tag=$(date +%Y.%m.0)
+          while [[ -n $(git tag -l $tag) ]]; do
+            tag=${tag%.*}.$((${tag##*.}+1))
+          done
+          echo "Version tag set to $tag"
+          echo "version=${tag}" >> $GITHUB_OUTPUT
+  
+  pack:
+    name: Pack environment
+    runs-on: ubuntu-latest
+    needs: [set-version, update-dependencies]
+    # Don't run if the event is a 'repository_dispatch' but the update-dependencies job failed
+    if: ${{ !cancelled() && !(github.event_name == 'repository_dispatch' && needs.update-dependencies.result != 'success') }}
+    env:
+      VERSION: ${{ needs.set-version.outputs.version }}
+    outputs:
+      full-name: ${{ steps.get-name.outputs.full-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get environment full name
+        id: get-name
+        run: echo "full-name=$(yq '.name' < ${{env.ENV_NAME}})-${{env.VERSION}}" >> $GITHUB_OUTPUT
+
+      - name: Setup Micromamba
+        uses: mamba-org/setup-micromamba@f8b8a1e23a26f60a44c853292711bacfd3eac822 #v1.9.0
+        with:
+          micromamba-version: '1.5.8-0'
+          environment-file: ${{env.ENV_NAME}}
+          environment-name: ${{ steps.get-name.outputs.full-name }}
+          generate-run-shell: true
+
+      - name: Create Pack and Lockfile
+        shell: micromamba-shell {0}
+        run: |
+          conda pack -o ${{ steps.get-name.outputs.full-name }}.tar.gz
+          conda-lock lock --file ${{env.ENV_NAME}} --platform linux-64 --micromamba --lockfile ${{ steps.get-name.outputs.full-name }}.conda-lock.yml
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.get-name.outputs.full-name }}
+          if-no-files-found: error
+          path: |
+            ${{ steps.get-name.outputs.full-name }}.tar.gz
+            ${{ steps.get-name.outputs.full-name }}.conda-lock.yml
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs:
+      - get-deployment-sites
+      - set-version
+      - pack
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment-sites: ${{ fromJson(needs.get-deployment-sites.outputs.deployment-sites) }}
+    environment: ${{ matrix.deployment-sites }}
+    env:
+      VERSION: ${{ needs.set-version.outputs.version }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.pack.outputs.full-name }}
+
+      - name: Set up SSH
+        uses: access-nri/actions/.github/actions/setup-ssh@main
+        id: ssh
+        with:
+          hosts: |
+            ${{ secrets.HOST_DATA }}
+            ${{ secrets.HOST }}
+          private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Copy to ${{ matrix.deployment-sites }}
+        run: |
+          rsync -v -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
+            ${{ needs.pack.outputs.full-name }}.tar.gz \
+            ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.PACK_DIR }}
+
+      - name: Deploy to ${{ matrix.deployment-sites }}
+        env:
+          MODULE_DEPLOYMENT_DIR: ${{ vars.ROOT_DIR }}/${{vars.MODULES_DIR}}/${{vars.MODULE_NAME}}/${{env.VERSION}}
+          APP_DEPLOYMENT_DIR: ${{ vars.ROOT_DIR }}/${{vars.APPS_DIR}}/${{vars.MODULE_NAME}}/${{env.VERSION}}
+        run: |
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<'EOT'
+          mkdir -p ${{ env.APP_DEPLOYMENT_DIR }}
+          tar -xzf ${{ vars.PACK_DIR }}/${{ needs.pack.outputs.full-name }}.tar.gz -C ${{ env.APP_DEPLOYMENT_DIR }}
+          source ${{ env.APP_DEPLOYMENT_DIR }}/bin/activate
+          conda-unpack
+          source ${{ env.APP_DEPLOYMENT_DIR }}/bin/deactivate
+          ln -sf $(dirname ${{env.APP_DEPLOYMENT_DIR}})/.common ${{env.MODULE_DEPLOYMENT_DIR}}
+          EOT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 #v2.0.8
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: ACCESS-RAM conda environment ${{ env.VERSION }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            ./${{ needs.pack.outputs.full-name }}.tar.gz
+            ./${{ needs.pack.outputs.full-name }}.conda-lock.yml
