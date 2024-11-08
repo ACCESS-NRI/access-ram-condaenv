@@ -1,0 +1,46 @@
+name: Update common modulefiles on Gadi
+on:
+  workflow_dispatch:
+jobs:
+  get-deployment-sites:
+    name: Get Deployment Sites
+    runs-on: ubuntu-latest
+    outputs:
+      deployment-sites: ${{ steps.get-deployment-sites.outputs.deployment-sites }}
+    steps:
+      - name: Checkout config
+        uses: actions/checkout@v4
+
+      - name: Get sites
+        id: get-deployment-sites
+        run: echo "deployment-sites=$(jq --compact-output '.sites' ./config/deployment-sites.json)" >> $GITHUB_OUTPUT
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: get-deployment-sites
+    strategy:
+      fail-fast: false
+      matrix:
+        deployment-sites: ${{ fromJson(needs.get-deployment-sites.outputs.deployment-sites) }}
+    environment: ${{ matrix.deployment-sites }}
+    env:
+      INPUT_DIR: modules
+      OUTPUT_DIR: release/modules
+      OUTPUT_DIR_PRERELEASE: prerelease/modules
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: access-nri/actions/.github/actions/setup-ssh@main
+        id: ssh
+        with:
+          hosts: |
+            ${{ secrets.HOST_DATA }}
+          private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Delete folders
+        run: |
+          # Create module deployment directory
+          ssh ${{ secrets.USER }}@${{ secrets.HOST_DATA }} -i ${{ steps.ssh.outputs.private-key-path }} /bin/bash <<EOT
+          rm -rf /g/data/vk83/modules/conda/access-ram/dev
+          rm -rf /g/data/vk83/apps/conda/access-ram/dev
+          EOT
