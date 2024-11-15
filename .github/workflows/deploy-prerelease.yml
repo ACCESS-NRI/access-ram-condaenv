@@ -28,7 +28,7 @@ jobs:
     steps:
       - name: Check token
         run: |
-          if [[ ${{ github.event.client_payload.token}} != ${{secrets.ADMIN_TOKEN }} ]]; then
+          if [[ ${{ github.event.client_payload.token}} != ${{ secrets.NO_PERMISSIONS_TOKEN }} ]]; then
             echo "Invalid token"
             exit 1
           fi
