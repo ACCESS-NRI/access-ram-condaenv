@@ -40,7 +40,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.ADMIN_TOKEN }}
+          token: ${{ secrets.REPO_CONTENT_WRITE_TOKEN }}
 
       - name: Bump dependencies
         run: |
