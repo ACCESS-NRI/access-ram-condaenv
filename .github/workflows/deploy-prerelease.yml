@@ -62,7 +62,7 @@ jobs:
       dependency-names: ${{ steps.get-dependencies.outputs.dependency-names }}
       pr-numbers: ${{ steps.get-dependencies.outputs.pr-numbers }}
     env:
-      GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      GH_TOKEN: ${{ secrets.REPO_CONTENT_READ_TOKEN }}
       CHANNEL_SUFFIX: _channel
     steps:
       - uses: actions/checkout@v4
