@@ -23,7 +23,7 @@ jobs:
       - name: Check token
         run: |
           if [[ ${{ github.event.client_payload.token}} != ${{ secrets.NO_PERMISSIONS_TOKEN }} ]]; then
-            echo "Invalid token"
+            echo "Invalid repo dispatch token"
             exit 1
           fi
 
