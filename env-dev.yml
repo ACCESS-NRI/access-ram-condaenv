@@ -3,15 +3,17 @@ channels:
   - accessnri
   - conda-forge
   - nodefaults
+  - coecms
 dependencies:
   - python=3.11
   - cdo
-  - conda-index
   - conda-lock
   - conda-pack
+  - numpy<2
+  - versioneer
+  - conda-index
   - hypothesis
   - ipykernel
   - pytest
   - pytest-cov
   - pre_commit
-  - versioneer
