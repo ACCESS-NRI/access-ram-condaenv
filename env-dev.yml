@@ -2,8 +2,8 @@ name: access-ram-dev
 channels:
   - accessnri
   - conda-forge
-  - nodefaults
   - coecms
+  - nodefaults
 dependencies:
   - python=3.11
   - cdo

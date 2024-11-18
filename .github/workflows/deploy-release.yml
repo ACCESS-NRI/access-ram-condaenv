@@ -79,7 +79,10 @@ jobs:
 
       - name: Get sites
         id: get-deployment-sites
-        run: echo "deployment-sites=$(jq --compact-output '.sites' ./config/deployment-sites.json)" >> $GITHUB_OUTPUT
+        run: |
+            sites=$(jq --compact-output '.sites' ./config/deployment-sites.json)
+            echo "Found the following deployment sites: $sites"
+            echo "deployment-sites=$sites" >> $GITHUB_OUTPUT
 
   set-version:
     name: Set condaenv release version
@@ -154,11 +157,13 @@ jobs:
       - get-deployment-sites
       - set-version
       - pack
+    # Run independently from the event if none of the needed jobs failed
+    if: ${{ !cancelled() && needs.get-deployment-sites.result == 'success' && needs.set-version.result == 'success' && needs.pack.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
-        deployment-sites: ${{ fromJson(needs.get-deployment-sites.outputs.deployment-sites) }}
-    environment: ${{ matrix.deployment-sites }}
+        deployment-site: ${{ fromJson(needs.get-deployment-sites.outputs.deployment-sites) }}
+    environment: ${{ matrix.deployment-site }}
     env:
       VERSION: ${{ needs.set-version.outputs.version }}
     permissions:
@@ -177,13 +182,13 @@ jobs:
             ${{ secrets.HOST }}
           private-key: ${{ secrets.SSH_KEY }}
 
-      - name: Copy to ${{ matrix.deployment-sites }}
+      - name: Copy to ${{ matrix.deployment-site }}
         run: |
           rsync -v -e 'ssh -i ${{ steps.ssh.outputs.private-key-path }}' \
             ${{ needs.pack.outputs.full-name }}.tar.gz \
             ${{ secrets.USER }}@${{ secrets.HOST_DATA }}:${{ vars.PACK_DIR }}
 
-      - name: Deploy to ${{ matrix.deployment-sites }}
+      - name: Deploy to ${{ matrix.deployment-site }}
         env:
           MODULE_DEPLOYMENT_DIR: ${{ vars.ROOT_DIR }}/${{vars.MODULES_DIR}}/${{vars.MODULE_NAME}}/${{env.VERSION}}
           APP_DEPLOYMENT_DIR: ${{ vars.ROOT_DIR }}/${{vars.APPS_DIR}}/${{vars.MODULE_NAME}}/${{env.VERSION}}
