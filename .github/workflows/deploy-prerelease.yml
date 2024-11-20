@@ -9,6 +9,7 @@ on:
       - 'env-dev.yml'
   repository_dispatch:
     types: [prerelease]
+  workflow_dispatch:
 env:
   ENV_NAME: env-dev.yml
   VERSION: dev
