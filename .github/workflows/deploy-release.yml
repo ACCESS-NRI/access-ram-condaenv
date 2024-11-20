@@ -95,6 +95,8 @@ jobs:
       version: ${{ steps.set-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
 
       - name: Set version tag
         id: set-version
@@ -156,7 +158,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [update-dependencies, set-version]
     # Run independently from the event if none of the needed jobs failed
-    if: ${{ !cancelled() && needs.update-dependencies.result == 'success' && needs.set-version.result == 'success' }}
+    if: ${{ !cancelled() && needs.update-dependencies.result != 'failure' && needs.set-version.result != 'failure' }}
     env:
       VERSION: ${{ needs.set-version.outputs.version }}
     steps:
@@ -191,7 +193,7 @@ jobs:
       - get-deployment-sites
       - set-version
       - pack
-    # Run independently from the event if none of the needed jobs failed
+    # Run independently from the event if all the needed jobs succeeded
     if: ${{ !cancelled() && needs.get-deployment-sites.result == 'success' && needs.set-version.result == 'success' && needs.pack.result == 'success' }}
     strategy:
       fail-fast: false
