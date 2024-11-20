@@ -7,9 +7,9 @@ on:
       - 'config/**'
       - 'modules/**'
       - 'env-dev.yml'
-      - '.github/workflows/deploy-prerelease.yml'
   repository_dispatch:
     types: [prerelease]
+  workflow_dispatch:
 env:
   ENV_NAME: env-dev.yml
   VERSION: dev
