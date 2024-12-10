@@ -176,7 +176,7 @@ jobs:
           echo -n "-c file://${{github.workspace}}/${dependency_repo}${{env.CHANNEL_SUFFIX}} "; done)
 
           cmd="micromamba install ${{steps.get-dependencies.outputs.dependency-names}} \
-          -c accessnri -c conda-forge -c coecms $channels -y"
+          $channels -c accessnri -c conda-forge -c coecms -y"
           echo "$cmd"
           eval "$cmd"
       
